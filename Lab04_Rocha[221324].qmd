@@ -1,0 +1,180 @@
+---
+title: "Lab04"
+author: "Leticia Rocha Soares Martins [221324]"
+data: "2026-09-09"
+format: html
+editor: visual
+---
+
+## Atividades
+
+#### conversão para csv com duckdb 
+```{r}
+#| label: converter-com-duckdb
+#| eval: false
+
+install.packages("duckdb")
+library(duckdb)
+
+fname <- file.path("dados", "WDIEXCEL.xlsx")
+csv_saida <- file.path("dados", "WDIEXCEL_Data.csv")
+
+con <- dbConnect(duckdb())
+dbExecute(con, "INSTALL excel; LOAD excel;")
+dbExecute(con, sprintf(
+  "COPY (SELECT * FROM read_xlsx('%s', sheet = 'Data')) TO '%s' (HEADER, DELIMITER ',')",
+  fname, csv_saida
+))
+dbDisconnect(con, shutdown = TRUE)
+```
+
+Depois de rodar o chunk acima é recomendado dar **Session \> Restart R**, para limpar a memória. 
+
+**1)** Carregue os pacotes `readxl` e `tidyverse`.
+
+```{r}
+install.packages(c("readxl", "tidyverse"))
+library(readxl)
+library(tidyverse)
+```
+
+**2)** Crie uma variável chamada `fname` que contenha o caminho para o arquivo `WDIEXCEL.xlsx`, disponível no seu diretório de dados. Confirme que o R identifica a existência do arquivo utilizando o comando `file.exists`
+
+```{r}
+fname <- "dados/WDIEXCEL.xlsx"
+
+file.exists(fname)
+```
+
+**3)** Leia a planilha “Country” e armazene no objeto `countries`.
+
+```{r}
+countries <- read_excel(fname, sheet = "Country")
+
+```
+
+**4)** Mantenha apenas os registros de 5 países (Brasil e outros 4 de sua escolha).
+
+```{r}
+mantidos <- c("BRA", "CHN", "CUB", "IND", "ITA")
+
+countries <- countries |>
+  filter( `Country Code` %in% mantidos)
+
+head(countries)
+```
+
+**5)** Leia a planilha “Data” e armazene no objeto `WDI`.
+
+```{r}
+paises_wanted <- countries$`Country Code`
+
+processa_chunk <- function(x, pos) {
+  x |>
+    filter(`Country Code` %in% paises_wanted)
+}
+
+WDI <- read_csv_chunked(
+  file.path("dados", "WDIEXCEL_Data.csv"),
+  DataFrameCallback$new(processa_chunk),
+  chunk_size = 20000
+)
+
+```
+
+**6)** Selecione apenas as colunas:
+
+```         
+- Country Code
+- Indicator Code
+- E todos os anos de 1960-2018
+```
+
+```{r}
+WDI <- WDI |>
+  select(`Country Code`, `Indicator Code`, `1960`:`2018`)
+```
+
+**7)** Confirme se os dados wm WDI estão em formato tidy. Se não estiverem, transforme-os para tal formato. Faça de forma que exista uma coluna referente ao ano chamada YEAR.
+
+**R>** A tabela não está em formato tidy pois a variavel "year" está armazenada em diversas colunas mas poderia estar em apenas uma. 
+```{r}
+WDI <- WDI %>% #filtra apenas os paises selecionados
+  filter(`Country Code` %in% countries$`Country Code`)
+```
+
+
+```{r}
+WDI <- WDI |>
+  pivot_longer(
+    cols = `1960`:`2018`,
+    names_to = "YEAR",
+    values_to = "value"
+  ) |>
+  pivot_wider(
+    names_from = `Indicator Code`,
+    values_from = value
+  )
+
+```
+
+**8)** Confirme se a coluna referente ao ano está em formato inteiro.
+
+```{r}
+class(WDI$YEAR)   
+
+WDI <- WDI %>%
+  mutate(YEAR = as.integer(YEAR))
+
+class(WDI$YEAR)   
+```
+
+**9)** Para o objeto WDI, mantenha apenas os registros dos países listados em countries. Selecione as colunas:
+
+```         
+- Country Code
+- Short Name
+- YEAR
+- SP.DYN.CBRT.IN
+```
+
+```{r}
+WDI_final <- WDI %>%
+  inner_join(
+    countries %>% select(`Country Code`, `Short Name`),
+    by = "Country Code"
+  ) %>%
+  select(`Country Code`, `Short Name`, YEAR, SP.DYN.CBRT.IN)
+
+WDI_final
+```
+
+**10)** Ordene o objeto de forma que, para cada país, as informações estejam ordenadas por ano.
+
+```{r}
+WDI_final <- WDI_final %>%
+  arrange(`Country Code`, YEAR)
+
+WDI_final
+```
+
+**11)** Construa um gráfico de linhas, usando o pacote `ggplot2`, que tenha no eixo X a variável YEAR, no eixo Y a variável SP.DYN.CBRT.IN e que cada linha corresponda a um país diferente.
+
+```{r}
+ggplot(WDI_final, aes(x = YEAR, y = SP.DYN.CBRT.IN, color = `Short Name`)) +
+  geom_line() +
+  labs(
+    title = "Taxa de natalidade bruta por país (1960-2018)",
+    x = "Ano",
+    y = "Taxa de natalidade bruta (SP.DYN.CBRT.IN)",
+    color = "País"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+Sys.setenv(TZ = "America/Sao_Paulo")
+Sys.time()
+```
+
