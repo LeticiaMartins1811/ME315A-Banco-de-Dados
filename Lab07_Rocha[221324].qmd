@@ -1,0 +1,111 @@
+---
+title: "Lab 07 - SQLite Parte II"
+author: "Leticia Rocha Soares Martins [221324]"
+format: pdf
+editor: visual
+---
+
+### Atividade
+
+1.  Baixe o arquivo `uwmadison.sqlite3`. Conecte-se a ele usando o pacote `RSQLite`, armazenando a conexão em uma variável `conn`.
+
+```{r}
+  library(RSQLite)
+  fname <- file.path(".", "database.sqlite3")   
+  conn <- dbConnect(SQLite(), fname)
+  
+  dbListTables(conn)
+
+```
+
+2.  Quem são e quantos são os professores que lecionaram disciplinas cujo tópico era estatística (`subjects.abbreviation='STAT'`);
+
+```{r}
+  profs <- paste(
+    "SELECT DISTINCT instructors.id, instructors.name",
+    "FROM instructors",
+    "INNER JOIN teachings ON teachings.instructor_id = instructors.id",
+    "INNER JOIN sections ON sections.uuid = teachings.section_uuid",
+    "INNER JOIN course_offerings ON course_offerings.uuid = sections.course_offering_uuid",
+    "INNER JOIN subject_memberships ON subject_memberships.course_offering_uuid = course_offerings.uuid",
+    "INNER JOIN subjects ON subjects.code = subject_memberships.subject_code",
+    "WHERE subjects.abbreviation = 'STAT'"
+  )
+
+  profs_stat <- dbGetQuery(conn, profs)
+  profs_stat        # quem são os professores
+  nrow(profs_stat)  # quantos professores são
+```
+
+3.  O GPA americano é definido numa escala de 0 a 4, em que A = 4, AB = 3.5, B = 3, BC = 2.5, C = 2, D = 1 e F = 0. Determinando a nota média de cada oferecimento pela ponderação da quantidade de alunos em cada extrato com os valores numéricos de cada conceito, indique (no que se referente a disciplinas no assunto de estatística):
+
+```{r}
+prof_gpa <- paste(
+  "SELECT instructors.id AS instructor_id, instructors.name AS instructor_name,",
+  "  SUM(4*a_count + 3.5*ab_count + 3*b_count + 2.5*bc_count + 2*c_count + 1*d_count + 0*f_count) * 1.0",
+  "    / SUM(a_count + ab_count + b_count + bc_count + c_count + d_count + f_count) AS gpa",
+  "FROM grade_distributions AS gd",
+  "INNER JOIN sections",
+  "  ON sections.course_offering_uuid = gd.course_offering_uuid",
+  "  AND sections.number = gd.section_number",
+  "INNER JOIN teachings ON teachings.section_uuid = sections.uuid",
+  "INNER JOIN instructors ON instructors.id = teachings.instructor_id",
+  "INNER JOIN course_offerings ON course_offerings.uuid = gd.course_offering_uuid",
+  "INNER JOIN subject_memberships ON subject_memberships.course_offering_uuid = course_offerings.uuid",
+  "INNER JOIN subjects ON subjects.code = subject_memberships.subject_code",
+  "WHERE subjects.abbreviation = 'STAT'",
+  "GROUP BY instructors.id, instructors.name",
+  "HAVING SUM(a_count + ab_count + b_count + bc_count + c_count + d_count + f_count) > 0"
+)
+
+
+
+curso_gpa <- paste(
+  "SELECT courses.uuid AS course_uuid, courses.name AS course_name, courses.number AS course_number,",
+  "  SUM(4*a_count + 3.5*ab_count + 3*b_count + 2.5*bc_count + 2*c_count + 1*d_count + 0*f_count) * 1.0",
+  "    / SUM(a_count + ab_count + b_count + bc_count + c_count + d_count + f_count) AS gpa",
+  "FROM grade_distributions AS gd",
+  "INNER JOIN course_offerings ON course_offerings.uuid = gd.course_offering_uuid",
+  "INNER JOIN courses ON courses.uuid = course_offerings.course_uuid",
+  "INNER JOIN subject_memberships ON subject_memberships.course_offering_uuid = course_offerings.uuid",
+  "INNER JOIN subjects ON subjects.code = subject_memberships.subject_code",
+  "WHERE subjects.abbreviation = 'STAT'",
+  "GROUP BY courses.uuid, courses.name, courses.number",
+  "HAVING SUM(a_count + ab_count + b_count + bc_count + c_count + d_count + f_count) > 0"
+)
+```
+
+- Quem é o professor mais difícil?
+
+```{r}
+  dbGetQuery(conn, paste(prof_gpa, "ORDER BY gpa ASC LIMIT 1"))
+```
+
+- Quem é o professor mais fácil?
+
+```{r}
+dbGetQuery(conn, paste(prof_gpa, "ORDER BY gpa DESC LIMIT 1"))
+```
+
+- Qual é a disciplina mais difícil?
+
+```{r}
+dbGetQuery(conn, paste(curso_gpa, "ORDER BY gpa ASC LIMIT 1"))
+```
+
+- Qual é a disciplina mais fácil?
+
+```{r}
+dbGetQuery(conn, paste(curso_gpa, "ORDER BY gpa DESC LIMIT 1"))
+```
+
+4.  Desconecte do banco de dados.
+
+```{r}
+dbDisconnect(conn)
+```
+
+```{r}
+Sys.setenv(TZ= "America/Sao_Paulo")
+Sys.time()
+```
